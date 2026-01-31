@@ -23,7 +23,6 @@ export const getUserData = async (req, res) => {
 }
 
 //  Update User Data
-import fs from 'fs';
 import mime from 'mime'; // npm install mime if not installed
 
 export const updateUserData = async (req, res) => {

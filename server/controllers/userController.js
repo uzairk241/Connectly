@@ -24,112 +24,80 @@ export const getUserData = async (req, res) => {
 
 //  Update User Data
 export const updateUserData = async (req, res) => {
-  try {
-    const { userId } = req.auth();
+    try {
+        const { userId } = req.auth()
+        let {username, bio, location, full_name } = req.body;
 
-    let { username, bio, location, full_name } = req.body;
+        const tempUser = await User.findById(userId)
 
-    // 🔹 Get existing user
-    const tempUser = await User.findById(userId);
-    if (!tempUser) {
-      return res.json({ success: false, message: "User not found" });
+        !username && (username = tempUser.username)
+
+        if(tempUser.username !== username){
+            const user = await User.findOne({username})
+            if(user){
+                // we will not change the username if it is already taken
+                username = tempUser.username
+            }
+        }
+
+        const updatedData = {
+            username,
+            bio,
+            location,
+            full_name
+        }
+
+        const profile = req.files.profile && req.files.profile[0]
+        const cover = req.files.cover && req.files.cover[0]
+
+        if(profile){
+            const buffer = fs.readFileSync(profile.path)
+            const response = await imagekit.upload({
+                file: buffer,
+                fileName: profile.originalname,
+            })
+
+            const url = imagekit.url({
+                path: response.filePath,
+                transformation: [
+                    {quality: 'auto'},
+                    { format: 'webp' },
+                    { width: '512' }
+                ]
+            })
+            updatedData.profile_picture = url;
+
+            const blob = await fetch(url).then(res => res.blob());
+            await clerkClient.users.updateUserProfileImage(userId, { file: blob });
+        }
+
+        if(cover){
+            const buffer = fs.readFileSync(cover.path)
+            const response = await imagekit.upload({
+                file: buffer,
+                fileName: profile.originalname,
+            })
+
+            const url = imagekit.url({
+                path: response.filePath,
+                transformation: [
+                    {quality: 'auto'},
+                    { format: 'webp' },
+                    { width: '1280' }
+                ]
+            })
+            updatedData.cover_photo = url;
+        }
+
+        const user = await User.findByIdAndUpdate(userId, updatedData, {new : true})
+
+        res.json({success: true, user, message: 'Profile updated successfully'})
+
+    } catch (error) {
+        console.log(error);
+        res.json({success: false, message: error.message})
     }
-
-    // 🔹 Username fallback
-    if (!username) username = tempUser.username;
-
-    // 🔹 Username uniqueness check
-    if (tempUser.username !== username) {
-      const existingUser = await User.findOne({ username });
-      if (existingUser) {
-        username = tempUser.username;
-      }
-    }
-
-    const updatedData = {
-      username,
-      bio,
-      location,
-      full_name,
-    };
-
-    const profile = req.files?.profile?.[0];
-    const cover = req.files?.cover?.[0];
-
-    // =====================
-    // PROFILE IMAGE
-    // =====================
-    if (profile) {
-      const buffer = fs.readFileSync(profile.path);
-
-      const uploadRes = await imagekit.upload({
-        file: buffer,
-        fileName: profile.originalname,
-        folder: "profiles",
-      });
-
-      const profileUrl = imagekit.url({
-        path: uploadRes.filePath,
-        transformation: [
-          { quality: "auto" },
-          { format: "webp" },
-          { width: "512" },
-        ],
-      });
-
-      updatedData.profile_picture = profileUrl;
-
-      // ✅ Clerk needs BUFFER (not URL / blob)
-      await clerkClient.users.updateUserProfileImage(userId, {
-        file: buffer,
-      });
-    }
-
-    // =====================
-    // COVER IMAGE
-    // =====================
-    if (cover) {
-      const buffer = fs.readFileSync(cover.path);
-
-      const uploadRes = await imagekit.upload({
-        file: buffer,
-        fileName: cover.originalname,
-        folder: "covers",
-      });
-
-      const coverUrl = imagekit.url({
-        path: uploadRes.filePath,
-        transformation: [
-          { quality: "auto" },
-          { format: "webp" },
-          { width: "1280" },
-        ],
-      });
-
-      updatedData.cover_photo = coverUrl;
-    }
-
-    // 🔹 Update DB user
-    const user = await User.findByIdAndUpdate(
-      userId,
-      updatedData,
-      { new: true }
-    );
-
-    res.json({
-      success: true,
-      user,
-      message: "Profile updated successfully",
-    });
-
-  } catch (error) {
-    console.error(error);
-    res.json({
-      success: false,
-      message: error.message,
-    });
-  }
-};
+}
 
 // Find Users using username, email, location, name
 export const discoverUsers = async (req, res) => {

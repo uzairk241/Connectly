@@ -67,9 +67,10 @@ export const updateUserData = async (req, res) => {
             })
             updatedData.profile_picture = url;
 
-            const blob = await fetch(url).then(res => res.blob());
-            await clerkClient.users.updateUserProfileImage(userId, { file: blob });
+            // Instead of fetching the image from URL, send buffer directly
+            await clerkClient.users.updateUserProfileImage(userId, { file: buffer });
         }
+
 
         if(cover){
             const buffer = fs.readFileSync(cover.path)

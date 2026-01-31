@@ -23,20 +23,23 @@ export const getUserData = async (req, res) => {
 }
 
 //  Update User Data
+import fs from 'fs';
+import mime from 'mime'; // npm install mime if not installed
+
 export const updateUserData = async (req, res) => {
     try {
-        const { userId } = req.auth()
-        let {username, bio, location, full_name } = req.body;
+        const { userId } = req.auth();
+        let { username, bio, location, full_name } = req.body;
 
-        const tempUser = await User.findById(userId)
+        const tempUser = await User.findById(userId);
 
-        !username && (username = tempUser.username)
+        if (!username) username = tempUser.username;
 
-        if(tempUser.username !== username){
-            const user = await User.findOne({username})
-            if(user){
-                // we will not change the username if it is already taken
-                username = tempUser.username
+        if (tempUser.username !== username) {
+            const user = await User.findOne({ username });
+            if (user) {
+                // Username already taken, revert to old
+                username = tempUser.username;
             }
         }
 
@@ -45,60 +48,71 @@ export const updateUserData = async (req, res) => {
             bio,
             location,
             full_name
-        }
+        };
 
-        const profile = req.files?.profile && req.files.profile[0]
-        const cover = req.files?.cover && req.files.cover[0]
+        const profile = req.files?.profile?.[0];
+        const cover = req.files?.cover?.[0];
 
-        if(profile){
-            const buffer = fs.readFileSync(profile.path)
+        if (profile) {
+            const buffer = fs.readFileSync(profile.path);
             const response = await imagekit.upload({
                 file: buffer,
                 fileName: profile.originalname,
-            })
+            });
 
             const url = imagekit.url({
                 path: response.filePath,
                 transformation: [
-                    {quality: 'auto'},
+                    { quality: 'auto' },
                     { format: 'webp' },
                     { width: '512' }
                 ]
-            })
+            });
+
             updatedData.profile_picture = url;
 
-            // Instead of fetching the image from URL, send buffer directly
-            await clerkClient.users.updateUserProfileImage(userId, { file: buffer });
+            // Determine MIME type safely
+            const contentType = profile.mimetype || mime.getType(profile.originalname) || 'application/octet-stream';
+
+            // Update Clerk profile image with correct file object
+            await clerkClient.users.updateUserProfileImage(userId, {
+                file: {
+                    buffer: buffer,
+                    name: profile.originalname,
+                    contentType: contentType
+                }
+            });
         }
 
-
-        if(cover){
-            const buffer = fs.readFileSync(cover.path)
+        if (cover) {
+            const buffer = fs.readFileSync(cover.path);
             const response = await imagekit.upload({
                 file: buffer,
                 fileName: cover.originalname,
-            })
+            });
 
             const url = imagekit.url({
                 path: response.filePath,
                 transformation: [
-                    {quality: 'auto'},
+                    { quality: 'auto' },
                     { format: 'webp' },
                     { width: '1280' }
                 ]
-            })
+            });
             updatedData.cover_photo = url;
+
+            // If Clerk supports cover photo update, you can add that here similarly
         }
 
-        const user = await User.findByIdAndUpdate(userId, updatedData, {new : true})
+        const user = await User.findByIdAndUpdate(userId, updatedData, { new: true });
 
-        res.json({success: true, user, message: 'Profile updated successfully'})
-
+        res.json({ success: true, user, message: 'Profile updated successfully' });
     } catch (error) {
         console.log(error);
-        res.json({success: false, message: error.message})
+        res.json({ success: false, message: error.message });
     }
-}
+};
+
 
 // Find Users using username, email, location, name
 export const discoverUsers = async (req, res) => {
